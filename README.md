@@ -1,6 +1,6 @@
 # Banking transaction summary ui
 
-A React + TypeScript application to view and edit JSON data with integration to a Spring Boot backend.
+A React + TypeScript application to view and edit client transactions and summary it
 
 ## Available Scripts
 
