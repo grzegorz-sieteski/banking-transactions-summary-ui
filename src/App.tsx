@@ -1,83 +1,119 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Client, SummaryClient, Account, ApiResponse } from './types/clientTypes';  // Poprawiony import
+import React, { useReducer, useEffect } from 'react';
+import { fetchAccounts, updateAccounts, fetchSummary } from './apiService';
 import DataForm from './components/DataForm';
 import { SummaryDisplay } from './components/SummaryDisplay';
 import { ClientList } from './components/ClientList';
+import { Client, SummaryClient } from './types/clientTypes';
+
+type State = {
+  data: Client[];
+  selected: Client | null;
+  loading: boolean;
+  error: string | null;
+  summary: SummaryClient[] | null;
+  expandedRows: number[];
+};
+
+type Action =
+  | { type: 'SET_DATA'; payload: Client[] }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'SET_SELECTED'; payload: Client | null }
+  | { type: 'SET_SUMMARY'; payload: SummaryClient[] | null }
+  | { type: 'TOGGLE_ROW'; payload: number };
+
+const initialState: State = {
+  data: [],
+  selected: null,
+  loading: true,
+  error: null,
+  summary: null,
+  expandedRows: [],
+};
+
+const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case 'SET_DATA':
+      return { ...state, data: action.payload };
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload };
+    case 'SET_SELECTED':
+      return { ...state, selected: action.payload };
+    case 'SET_SUMMARY':
+      return { ...state, summary: action.payload };
+    case 'TOGGLE_ROW':
+      return {
+        ...state,
+        expandedRows: state.expandedRows.includes(action.payload)
+          ? state.expandedRows.filter(row => row !== action.payload)
+          : [...state.expandedRows, action.payload],
+      };
+    default:
+      return state;
+  }
+};
 
 function App() {
-  const [data, setData] = useState<Client[]>([]);
-  const [selected, setSelected] = useState<Client | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<SummaryClient[] | null>(null);
-  const [expandedRows, setExpandedRows] = useState<number[]>([]);
+  const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
-    axios
-      .get<ApiResponse>('http://localhost:8080/bankingtransactions/accounts')
-      .then((resp) => {
-        const accountsData = resp.data.accounts.map((account: Account) => account.client);  // Typ dla account
-        setData(accountsData);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    (async () => {
+      try {
+        const clients = await fetchAccounts();
+        dispatch({ type: 'SET_DATA', payload: clients });
+      } catch (error) {
+        dispatch({ type: 'SET_ERROR', payload: (error as Error).message });
+      } finally {
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }
+    })();
   }, []);
 
-  const handleSave = (updated: Client) => {
-    const updatedList = data.map(c =>
-      c.info.name === updated.info.name && c.info.surname === updated.info.surname ? updated : c
-    );
+  const handleSave = async (updated: Client): Promise<void> => {
+    try {
+      const updatedList = state.data.map((client: Client) =>
+        client.info.name === updated.info.name && client.info.surname === updated.info.surname
+          ? updated
+          : client
+      );
 
-    const updatedAccounts = updatedList.map((client) => ({
-      client,
-      balance: {
-        total: client.balance.total,
-        currency: client.balance.currency,
-        date: client.balance.date,
-      },
-      transactions: client.transactions.map((t) => ({
-        type: t.type,
-        description: t.description,
-        date: t.date,
-        value: t.value,
-        currency: t.currency,
-      })),
-    }));
+      const updatedAccounts = updatedList.map((client: Client) => ({
+        client,
+        balance: client.balance,
+        transactions: client.transactions,
+      }));
 
-    const payload = { accounts: updatedAccounts };
-
-    axios
-      .post('http://localhost:8080/bankingtransactions/create-or-update-accounts', payload)
-      .then(() => {
-        setData(updatedList);
-        setSelected(null);
-      })
-      .catch((err) => setError(err.message));
+      await updateAccounts({ accounts: updatedAccounts });
+      dispatch({ type: 'SET_DATA', payload: updatedList });
+      dispatch({ type: 'SET_SELECTED', payload: null });
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: (error as Error).message });
+    }
   };
 
-  const handleSummary = () => {
-    const payload = { clients: { client: data } };
-    axios
-      .post<SummaryClient[]>('http://localhost:8080/bankingtransactions/summary', payload)
-      .then(resp => setSummary(resp.data))
-      .catch(err => setError(err.message));
+  const handleSummary = async (): Promise<void> => {
+    try {
+      const summary = await fetchSummary({ clients: { client: state.data } });
+      dispatch({ type: 'SET_SUMMARY', payload: summary });
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: (error as Error).message });
+    }
   };
 
-  const handleToggleTransactions = (index: number) => {
-    setExpandedRows(prev =>
-      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
-    );
+  const handleToggleTransactions = (index: number): void => {
+    dispatch({ type: 'TOGGLE_ROW', payload: index });
   };
 
-  if (loading) return <div className="p-6 text-center">Loading...</div>;
-  if (error) return <div className="p-6 text-center text-red-600">{error}</div>;
+  if (state.loading) return <div className="p-6 text-center">Loading...</div>;
+  if (state.error) return <div className="p-6 text-center text-red-600">{state.error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <h1 className="text-3xl font-bold mb-4 text-center text-blue-600">Financial Transactions Tracker</h1>
 
-      {!summary && (
+      {!state.summary && (
         <div className="mb-4 text-center">
           <button
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
@@ -88,13 +124,13 @@ function App() {
         </div>
       )}
 
-      {summary ? (
+      {state.summary ? (
         <>
-          <SummaryDisplay summary={summary} />
+          <SummaryDisplay summary={state.summary} />
           <div className="text-center mt-4">
             <button
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-              onClick={() => setSummary(null)}
+              onClick={() => dispatch({ type: 'SET_SUMMARY', payload: null })}
             >
               Back to Clients
             </button>
@@ -103,16 +139,20 @@ function App() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ClientList
-            clients={data}
-            expandedRows={expandedRows}
+            clients={state.data}
+            expandedRows={state.expandedRows}
             onToggleTransactions={handleToggleTransactions}
-            onEdit={(client) => setSelected(client)}
+            onEdit={(client) => dispatch({ type: 'SET_SELECTED', payload: client })}
           />
 
-          {selected && (
+          {state.selected && (
             <div className="bg-white p-4 shadow-lg rounded-lg">
               <h3 className="text-2xl font-semibold mb-4">Edit Client</h3>
-              <DataForm client={selected} onSave={handleSave} onCancel={() => setSelected(null)} />
+              <DataForm
+                client={state.selected}
+                onSave={handleSave}
+                onCancel={() => dispatch({ type: 'SET_SELECTED', payload: null })}
+              />
             </div>
           )}
         </div>
