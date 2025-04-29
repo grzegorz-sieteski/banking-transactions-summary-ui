@@ -1,30 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Client, SummaryClient } from './types/clientTypes';
-import { DataForm } from './components/DataForm';
+import { Client, SummaryClient, Account, ApiResponse } from './types/clientTypes';  // Poprawiony import
+import DataForm from './components/DataForm';
 import { SummaryDisplay } from './components/SummaryDisplay';
 import { ClientList } from './components/ClientList';
-
-
-interface Account {
-  client: Client;
-  balance: {
-    total: string;
-    currency: string;
-    date: string;
-  };
-  transactions: {
-    type: string;
-    description: string;
-    date: string;
-    value: string;
-    currency: string;
-  }[];
-}
-
-interface ApiResponse {
-  accounts: Account[];
-}
 
 function App() {
   const [data, setData] = useState<Client[]>([]);
@@ -38,7 +17,7 @@ function App() {
     axios
       .get<ApiResponse>('http://localhost:8080/bankingtransactions/accounts')
       .then((resp) => {
-        const accountsData = resp.data.accounts.map((account) => account.client);
+        const accountsData = resp.data.accounts.map((account: Account) => account.client);  // Typ dla account
         setData(accountsData);
       })
       .catch((err) => setError(err.message))
@@ -49,14 +28,32 @@ function App() {
     const updatedList = data.map(c =>
       c.info.name === updated.info.name && c.info.surname === updated.info.surname ? updated : c
     );
-    const payload = { clients: { client: updatedList } };
+
+    const updatedAccounts = updatedList.map((client) => ({
+      client,
+      balance: {
+        total: client.balance.total,
+        currency: client.balance.currency,
+        date: client.balance.date,
+      },
+      transactions: client.transactions.map((t) => ({
+        type: t.type,
+        description: t.description,
+        date: t.date,
+        value: t.value,
+        currency: t.currency,
+      })),
+    }));
+
+    const payload = { accounts: updatedAccounts };
+
     axios
       .post('http://localhost:8080/bankingtransactions/create-or-update-accounts', payload)
       .then(() => {
         setData(updatedList);
         setSelected(null);
       })
-      .catch(err => setError(err.message));
+      .catch((err) => setError(err.message));
   };
 
   const handleSummary = () => {
@@ -125,5 +122,3 @@ function App() {
 }
 
 export default App;
-
-

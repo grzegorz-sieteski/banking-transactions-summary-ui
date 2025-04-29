@@ -7,7 +7,7 @@ export type Transaction = {
 };
 
 export type Client = {
-  info: { name: string; surname: string; country?: string };
+  info: { clientId: bigint; name: string; surname: string; country?: string };
   balance: { total: string; currency: string; date: string };
   transactions: Transaction[];
 };
@@ -30,3 +30,23 @@ export type SummaryClient = {
     currency: string;
   };
 };
+
+export type Account = {
+  client: Client;
+  balance: {
+    total: string;
+    currency: string;
+    date: string;
+  };
+  transactions: {
+    type: string;
+    description: string;
+    date: string;
+    value: string;
+    currency: string;
+  }[];
+};
+
+export interface ApiResponse {
+  accounts: Account[];
+}
